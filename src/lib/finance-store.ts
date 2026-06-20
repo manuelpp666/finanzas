@@ -1,112 +1,103 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Goal, Transaction } from "./finance-types";
-
-const TX_KEY = "lumen.transactions.v1";
-const GOAL_KEY = "lumen.goals.v1";
+import {
+  getTransactionsFn,
+  addTransactionFn,
+  removeTransactionFn,
+  getGoalsFn,
+  addGoalFn,
+  updateGoalFn,
+  removeGoalFn,
+  depositGoalFn,
+} from "./finance-server";
 
 type State = {
   transactions: Transaction[];
   goals: Goal[];
 };
 
-const listeners = new Set<() => void>();
-let state: State = { transactions: [], goals: [] };
-let hydrated = false;
-
-function notify() {
-  for (const l of listeners) l();
-}
-
-function persist() {
-  try {
-    localStorage.setItem(TX_KEY, JSON.stringify(state.transactions));
-    localStorage.setItem(GOAL_KEY, JSON.stringify(state.goals));
-  } catch {}
-}
-
-function hydrate() {
-  if (hydrated || typeof window === "undefined") return;
-  hydrated = true;
-  try {
-    const tx = localStorage.getItem(TX_KEY);
-    const goals = localStorage.getItem(GOAL_KEY);
-    state = {
-      transactions: tx ? JSON.parse(tx) : seedTransactions(),
-      goals: goals ? JSON.parse(goals) : seedGoals(),
-    };
-    if (!tx || !goals) persist();
-  } catch {
-    state = { transactions: seedTransactions(), goals: seedGoals() };
-    persist();
-  }
-  notify();
-}
-
-function subscribe(l: () => void) {
-  listeners.add(l);
-  return () => listeners.delete(l);
-}
-
-function getSnapshot(): State {
-  return state;
-}
-
-const EMPTY_STATE: State = { transactions: [], goals: [] };
-function getServerSnapshot(): State {
-  return EMPTY_STATE;
-}
-
+const EMPTY: State = { transactions: [], goals: [] };
 
 export function useFinanceStore() {
-  const snap = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const [state, setState] = useState<State>(EMPTY);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [tx, goals] = await Promise.all([
+        getTransactionsFn(),
+        getGoalsFn(),
+      ]);
+      setState({ transactions: tx, goals });
+    } catch {
+      setState(EMPTY);
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
   useEffect(() => {
-    hydrate();
+    load();
+  }, [load]);
+
+  const addTransaction = useCallback(
+    async (t: Omit<Transaction, "id" | "createdAt">) => {
+      const created = await addTransactionFn({ data: t });
+      setState((prev) => ({
+        ...prev,
+        transactions: [created, ...prev.transactions],
+      }));
+    },
+    [],
+  );
+
+  const removeTransaction = useCallback(async (id: string) => {
+    await removeTransactionFn({ data: id });
+    setState((prev) => ({
+      ...prev,
+      transactions: prev.transactions.filter((t) => t.id !== id),
+    }));
   }, []);
 
-  const addTransaction = useCallback((t: Omit<Transaction, "id" | "createdAt">) => {
-    const newTx: Transaction = { ...t, id: crypto.randomUUID(), createdAt: Date.now() };
-    state = { ...state, transactions: [newTx, ...state.transactions] };
-    persist();
-    notify();
+  const addGoal = useCallback(async (g: Omit<Goal, "id" | "createdAt">) => {
+    const created = await addGoalFn({ data: g });
+    setState((prev) => ({
+      ...prev,
+      goals: [created, ...prev.goals],
+    }));
   }, []);
 
-  const removeTransaction = useCallback((id: string) => {
-    state = { ...state, transactions: state.transactions.filter((t) => t.id !== id) };
-    persist();
-    notify();
+  const updateGoal = useCallback(async (id: string, patch: Partial<Goal>) => {
+    await updateGoalFn({ data: { id, patch } });
+    setState((prev) => ({
+      ...prev,
+      goals: prev.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)),
+    }));
   }, []);
 
-  const addGoal = useCallback((g: Omit<Goal, "id" | "createdAt">) => {
-    const newGoal: Goal = { ...g, id: crypto.randomUUID(), createdAt: Date.now() };
-    state = { ...state, goals: [newGoal, ...state.goals] };
-    persist();
-    notify();
+  const removeGoal = useCallback(async (id: string) => {
+    await removeGoalFn({ data: id });
+    setState((prev) => ({
+      ...prev,
+      goals: prev.goals.filter((g) => g.id !== id),
+    }));
   }, []);
 
-  const updateGoal = useCallback((id: string, patch: Partial<Goal>) => {
-    state = { ...state, goals: state.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) };
-    persist();
-    notify();
-  }, []);
-
-  const removeGoal = useCallback((id: string) => {
-    state = { ...state, goals: state.goals.filter((g) => g.id !== id) };
-    persist();
-    notify();
-  }, []);
-
-  const depositGoal = useCallback((id: string, amount: number) => {
-    state = {
-      ...state,
-      goals: state.goals.map((g) => (g.id === id ? { ...g, current: Math.max(0, g.current + amount) } : g)),
-    };
-    persist();
-    notify();
+  const depositGoal = useCallback(async (id: string, amount: number) => {
+    await depositGoalFn({ data: { id, amount } });
+    setState((prev) => ({
+      ...prev,
+      goals: prev.goals.map((g) =>
+        g.id === id ? { ...g, current: Math.max(0, g.current + amount) } : g,
+      ),
+    }));
   }, []);
 
   return {
-    transactions: snap.transactions,
-    goals: snap.goals,
+    transactions: state.transactions,
+    goals: state.goals,
+    loaded,
+    refetch: load,
     addTransaction,
     removeTransaction,
     addGoal,
@@ -114,46 +105,4 @@ export function useFinanceStore() {
     removeGoal,
     depositGoal,
   };
-}
-
-function seedTransactions(): Transaction[] {
-  const today = new Date();
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const mk = (offset: number, t: Partial<Transaction>): Transaction => {
-    const d = new Date(today);
-    d.setDate(d.getDate() - offset);
-    return {
-      id: crypto.randomUUID(),
-      amount: 0,
-      description: "",
-      date: iso(d),
-      category: "other",
-      method: "yape",
-      type: "expense",
-      createdAt: Date.now() - offset * 86400000,
-      ...t,
-    };
-  };
-  return [
-    mk(0, { amount: 18.5, description: "Café y tostadas", category: "food", method: "yape" }),
-    mk(0, { amount: 12, description: "Uber al trabajo", category: "transport", method: "card" }),
-    mk(1, { amount: 89.9, description: "Cena con amigos", category: "leisure", method: "card" }),
-    mk(2, { amount: 4500, description: "Sueldo", category: "other", method: "card", type: "income" }),
-    mk(2, { amount: 145, description: "Luz y agua", category: "services", method: "card" }),
-    mk(3, { amount: 32, description: "Mercado", category: "food", method: "cash" }),
-    mk(5, { amount: 220, description: "Zapatillas", category: "shopping", method: "card" }),
-    mk(7, { amount: 22, description: "Almuerzo", category: "food", method: "yape" }),
-  ];
-}
-
-function seedGoals(): Goal[] {
-  const future = (months: number) => {
-    const d = new Date();
-    d.setMonth(d.getMonth() + months);
-    return d.toISOString().slice(0, 10);
-  };
-  return [
-    { id: crypto.randomUUID(), name: "Laptop nueva", target: 4500, current: 1800, deadline: future(4), createdAt: Date.now() - 30 * 86400000 },
-    { id: crypto.randomUUID(), name: "Fondo de viaje", target: 8000, current: 2400, deadline: future(8), createdAt: Date.now() - 60 * 86400000 },
-  ];
 }

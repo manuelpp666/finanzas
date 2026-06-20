@@ -31,4 +31,8 @@ dist-ssr
 *.sln
 *.sw?
 
-node_modules
+# Environment variables
+.env
+
+# Local data directory
+.data/

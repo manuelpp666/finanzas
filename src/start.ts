@@ -1,7 +1,8 @@
-import { createStart, createMiddleware } from "@tanstack/react-start";
+import { createStart, createMiddleware, createCsrfMiddleware } from "@tanstack/react-start"; // 1. Importado aquí
 
 import { renderErrorPage } from "./lib/error-page";
 
+// Tu middleware de errores actual se queda igual
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
   try {
     return await next();
@@ -17,6 +18,12 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
   }
 });
 
+// 2. Creamos el filtro de protección contra ataques CSRF para tus Server Functions
+const csrfMiddleware = createCsrfMiddleware({
+  filter: (ctx) => ctx.handlerType === 'serverFn',
+});
+
 export const startInstance = createStart(() => ({
-  requestMiddleware: [errorMiddleware],
+  // 3. Agregado al array junto con tu middleware de errores
+  requestMiddleware: [csrfMiddleware, errorMiddleware], 
 }));

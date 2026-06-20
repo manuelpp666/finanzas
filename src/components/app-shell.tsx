@@ -1,6 +1,7 @@
-import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, BarChart3, Target } from "lucide-react";
+import { Link, useRouter, useRouterState } from "@tanstack/react-router";
+import { Home, BarChart3, Target, LogOut } from "lucide-react";
 import type { ReactNode } from "react";
+import { useAuth } from "@/lib/auth/context";
 
 const navItems = [
   { to: "/", label: "Inicio", icon: Home },
@@ -10,6 +11,13 @@ const navItems = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { logout } = useAuth();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await logout();
+    router.navigate({ to: "/login" });
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -37,6 +45,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </Link>
               );
             })}
+            <button
+              onClick={handleLogout}
+              className="ml-2 px-3 py-2 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center gap-1.5"
+            >
+              <LogOut className="size-4" />
+              Salir
+            </button>
           </nav>
         </div>
       </header>
@@ -50,6 +65,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <span className="font-display text-lg">Lumen</span>
           </Link>
+          <button
+            onClick={handleLogout}
+            className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <LogOut className="size-5" />
+          </button>
         </div>
       </header>
 

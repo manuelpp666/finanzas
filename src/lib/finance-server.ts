@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getCookie } from "@tanstack/react-start/server";
 import { sql, supabase } from "@/lib/db";
-import type { Transaction, Goal } from "./finance-types";
+import type { Transaction, Goal, CategoryDef } from "./finance-types";
 
 async function getUserId(): Promise<string> {
   const token = getCookie("lumen_token");
@@ -10,6 +10,61 @@ async function getUserId(): Promise<string> {
   if (error || !data.user) throw new Error("Sesión inválida");
   return data.user.id;
 }
+
+// ─── CATEGORIES ───────────────────────────────────────────────
+
+export const getCategoriesFn = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const token = getCookie("lumen_token");
+    let userId: string | null = null;
+    if (token) {
+      const { data } = await supabase.auth.getUser(token);
+      userId = data.user?.id ?? null;
+    }
+    const rows = userId
+      ? await sql`
+          SELECT value, label, token, type
+          FROM public.categories
+          WHERE user_id IS NULL OR user_id = ${userId}
+          ORDER BY user_id NULLS FIRST, label
+        `
+      : await sql`
+          SELECT value, label, token, type
+          FROM public.categories
+          WHERE user_id IS NULL
+          ORDER BY label
+        `;
+    return rows.map(mapCategory);
+  },
+);
+
+export const addCategoryFn = createServerFn({ method: "POST" })
+  .validator((data: { value: string; label: string; type: "expense" | "income" | "both" }) => {
+    if (!data.value?.trim()) throw new Error("El identificador es obligatorio");
+    if (!data.label?.trim()) throw new Error("El nombre es obligatorio");
+    return data;
+  })
+  .handler(async ({ data }) => {
+    const userId = await getUserId();
+    // Token generado en el backend con un color aleatorio del conjunto de CSS vars disponibles
+    const tokens = [
+      "var(--cat-food)",
+      "var(--cat-transport)",
+      "var(--cat-services)",
+      "var(--cat-leisure)",
+      "var(--cat-shopping)",
+      "var(--cat-salary)",
+      "var(--cat-other)",
+    ];
+    const token = tokens[Math.floor(Math.random() * tokens.length)];
+    const value = data.value.trim().toLowerCase().replace(/\s+/g, "-");
+    const rows = await sql`
+      INSERT INTO public.categories (value, label, token, type, user_id)
+      VALUES (${value}, ${data.label.trim()}, ${token}, ${data.type}, ${userId})
+      RETURNING value, label, token, type
+    `;
+    return mapCategory(rows[0]);
+  });
 
 // ─── TRANSACTIONS ─────────────────────────────────────────────
 
@@ -171,6 +226,15 @@ export const depositGoalFn = createServerFn({ method: "POST" })
   });
 
 // ─── HELPERS ──────────────────────────────────────────────────
+
+function mapCategory(row: Record<string, unknown>): CategoryDef {
+  return {
+    value: row.value as string,
+    label: row.label as string,
+    token: row.token as string,
+    type: row.type as "expense" | "income" | "both",
+  };
+}
 
 function mapTransaction(row: Record<string, unknown>): Transaction {
   const rawDate = row.date;

@@ -1,5 +1,5 @@
 import { Smartphone, CreditCard, Banknote, ArrowDownLeft, ArrowUpRight } from "lucide-react";
-import type { PaymentMethod, Transaction } from "@/lib/finance-types";
+import type { CategoryDef, PaymentMethod, Transaction } from "@/lib/finance-types";
 import { categoryLabel, categoryToken } from "@/lib/finance-types";
 import { formatCurrency, formatDate } from "@/lib/format";
 
@@ -9,7 +9,7 @@ const methodIcons: Record<PaymentMethod, typeof Smartphone> = {
   cash: Banknote,
 };
 
-export function TransactionRow({ t }: { t: Transaction }) {
+export function TransactionRow({ t, categories }: { t: Transaction; categories: CategoryDef[] }) {
   const MIcon = methodIcons[t.method];
   const isIncome = t.type === "income";
 
@@ -17,18 +17,18 @@ export function TransactionRow({ t }: { t: Transaction }) {
     <div className="flex items-center gap-4 py-3.5">
       <div
         className="size-10 rounded-xl grid place-items-center shrink-0"
-        style={{ backgroundColor: `color-mix(in oklab, ${categoryToken(t.category)} 16%, transparent)` }}
+        style={{ backgroundColor: `color-mix(in oklab, ${categoryToken(t.category, categories)} 16%, transparent)` }}
       >
         {isIncome ? (
           <ArrowDownLeft className="size-5" style={{ color: "var(--success)" }} />
         ) : (
-          <MIcon className="size-5" style={{ color: categoryToken(t.category) }} />
+          <MIcon className="size-5" style={{ color: categoryToken(t.category, categories) }} />
         )}
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium truncate">{t.description}</p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {categoryLabel(t.category)} · {formatDate(t.date)}
+          {categoryLabel(t.category, categories)} · {formatDate(t.date)}
         </p>
       </div>
       <div className="text-right shrink-0">

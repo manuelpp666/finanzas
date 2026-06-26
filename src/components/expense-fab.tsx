@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Smartphone, CreditCard, Banknote } from "lucide-react";
-import { CATEGORIES, METHODS, type Category, type PaymentMethod } from "@/lib/finance-types";
+import { METHODS, type Category, type PaymentMethod } from "@/lib/finance-types";
 import { useFinanceStore } from "@/lib/finance-store";
 import { todayISO } from "@/lib/format";
 import { toast } from "sonner";
@@ -17,14 +17,35 @@ const methodIcons: Record<PaymentMethod, typeof Smartphone> = {
 
 export function ExpenseFab() {
   const [open, setOpen] = useState(false);
-  const { addTransaction } = useFinanceStore();
+  const { addTransaction, categories, addCategory } = useFinanceStore();
 
   const [type, setType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(todayISO());
-  const [category, setCategory] = useState<Category>("food");
+  const [category, setCategory] = useState<Category>("");
   const [method, setMethod] = useState<PaymentMethod | null>(null);
+
+  // New category form state
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCatValue, setNewCatValue] = useState("");
+  const [newCatLabel, setNewCatLabel] = useState("");
+  const [savingCat, setSavingCat] = useState(false);
+
+  // Filtered categories: show those matching the selected type or 'both'
+  const visibleCategories = categories.filter(
+    (c) => c.type === type || c.type === "both",
+  );
+
+  // Auto-select first valid category when type changes or categories load
+  useEffect(() => {
+    if (
+      category &&
+      visibleCategories.some((c) => c.value === category)
+    )
+      return;
+    setCategory(visibleCategories[0]?.value ?? "");
+  }, [type, visibleCategories.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!open) {
@@ -32,19 +53,46 @@ export function ExpenseFab() {
       setAmount("");
       setDescription("");
       setDate(todayISO());
-      setCategory("food");
+      setCategory(categories.filter((c) => c.type === "expense" || c.type === "both")[0]?.value ?? "");
       setMethod(null);
+      setShowNewCat(false);
+      setNewCatValue("");
+      setNewCatLabel("");
     }
-  }, [open]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const n = parseFloat(amount);
     if (!n || n <= 0) return toast.error("Ingresa un monto válido");
     if (!method) return toast.error("Selecciona un método de pago");
+    if (!category) return toast.error("Selecciona una categoría");
     addTransaction({ amount: n, description: description.trim() || "Sin descripción", date, category, method, type });
     toast.success(type === "income" ? "Ingreso registrado" : "Gasto registrado");
     setOpen(false);
+  };
+
+  const submitNewCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatLabel.trim()) return toast.error("Ingresa un nombre para la categoría");
+    if (!newCatValue.trim()) return toast.error("Ingresa un identificador para la categoría");
+    setSavingCat(true);
+    try {
+      const created = await addCategory({
+        value: newCatValue.trim(),
+        label: newCatLabel.trim(),
+        type,
+      });
+      setCategory(created.value);
+      setShowNewCat(false);
+      setNewCatValue("");
+      setNewCatLabel("");
+      toast.success("Categoría creada");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al crear categoría");
+    } finally {
+      setSavingCat(false);
+    }
   };
 
   return (
@@ -63,6 +111,7 @@ export function ExpenseFab() {
         </DialogHeader>
 
         <form onSubmit={submit} className="space-y-5 mt-2">
+          {/* Type toggle */}
           <div className="grid grid-cols-2 gap-2 p-1 bg-muted rounded-full">
             {(["expense", "income"] as const).map((t) => (
               <button
@@ -78,6 +127,7 @@ export function ExpenseFab() {
             ))}
           </div>
 
+          {/* Amount */}
           <div>
             <Label className="text-xs uppercase tracking-wider text-muted-foreground">Monto</Label>
             <div className="relative mt-2">
@@ -95,6 +145,7 @@ export function ExpenseFab() {
             </div>
           </div>
 
+          {/* Description */}
           <div>
             <Label className="text-xs uppercase tracking-wider text-muted-foreground">Descripción</Label>
             <Input
@@ -105,15 +156,17 @@ export function ExpenseFab() {
             />
           </div>
 
+          {/* Date */}
           <div>
             <Label className="text-xs uppercase tracking-wider text-muted-foreground">Fecha</Label>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-2 h-11 numeric" />
           </div>
 
+          {/* Categories */}
           <div>
             <Label className="text-xs uppercase tracking-wider text-muted-foreground">Categoría</Label>
             <div className="mt-2 flex flex-wrap gap-2">
-              {CATEGORIES.map((c) => (
+              {visibleCategories.map((c) => (
                 <button
                   type="button"
                   key={c.value}
@@ -131,9 +184,70 @@ export function ExpenseFab() {
                   {c.label}
                 </button>
               ))}
+
+              {/* Add new category button */}
+              {!showNewCat && (
+                <button
+                  type="button"
+                  onClick={() => setShowNewCat(true)}
+                  className="px-3.5 py-2 rounded-full text-sm font-medium border border-dashed border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground transition"
+                >
+                  + Nueva
+                </button>
+              )}
             </div>
+
+            {/* Inline new category form */}
+            {showNewCat && (
+              <div className="mt-3 p-3 rounded-2xl border border-border bg-muted/40 space-y-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Nueva categoría · {type === "expense" ? "Gasto" : "Ingreso"}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Nombre</Label>
+                    <Input
+                      value={newCatLabel}
+                      onChange={(e) => setNewCatLabel(e.target.value)}
+                      placeholder="Ej. Mascota"
+                      className="mt-1 h-9 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Identificador</Label>
+                    <Input
+                      value={newCatValue}
+                      onChange={(e) => setNewCatValue(e.target.value)}
+                      placeholder="Ej. pet"
+                      className="mt-1 h-9 text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="flex-1 rounded-full"
+                    disabled={savingCat}
+                    onClick={submitNewCategory}
+                  >
+                    {savingCat ? "Guardando…" : "Crear"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="rounded-full"
+                    onClick={() => { setShowNewCat(false); setNewCatValue(""); setNewCatLabel(""); }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
+          {/* Payment method */}
           <div>
             <Label className="text-xs uppercase tracking-wider text-muted-foreground">
               Método de pago <span className="text-destructive">*</span>

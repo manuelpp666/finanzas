@@ -6,7 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { ExpenseFab } from "@/components/expense-fab";
 import { TransactionRow } from "@/components/transaction-row";
 import { useFinanceStore } from "@/lib/finance-store";
-import { CATEGORIES, categoryLabel, categoryToken } from "@/lib/finance-types";
+import { categoryLabel, categoryToken } from "@/lib/finance-types";
 import { formatCurrency, inMonth } from "@/lib/format";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -21,7 +21,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Dashboard() {
-  const { transactions } = useFinanceStore();
+  const { transactions, categories } = useFinanceStore();
   const now = new Date();
   const y = now.getFullYear();
   const m = now.getMonth();
@@ -34,10 +34,11 @@ function Dashboard() {
   const byCategory = useMemo(() => {
     const map = new Map<string, number>();
     monthTx.filter((t) => t.type === "expense").forEach((t) => map.set(t.category, (map.get(t.category) ?? 0) + t.amount));
-    return CATEGORIES.map((c) => ({ name: c.label, value: map.get(c.value) ?? 0, color: c.token, key: c.value }))
+    return categories
+      .map((c) => ({ name: c.label, value: map.get(c.value) ?? 0, color: c.token, key: c.value }))
       .filter((c) => c.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [monthTx]);
+  }, [monthTx, categories]);
 
   const totalCat = byCategory.reduce((s, c) => s + c.value, 0);
   const recent = transactions.slice(0, 5);
@@ -150,7 +151,7 @@ function Dashboard() {
             ) : (
               <div className="divide-y divide-border/60">
                 {recent.map((t) => (
-                  <TransactionRow key={t.id} t={t} />
+                  <TransactionRow key={t.id} t={t} categories={categories} />
                 ))}
               </div>
             )}

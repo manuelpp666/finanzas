@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Goal, Transaction } from "./finance-types";
+import type { CategoryDef, Goal, Transaction } from "./finance-types";
 import {
   getTransactionsFn,
   addTransactionFn,
@@ -9,14 +9,17 @@ import {
   updateGoalFn,
   removeGoalFn,
   depositGoalFn,
+  getCategoriesFn,
+  addCategoryFn,
 } from "./finance-server";
 
 type State = {
   transactions: Transaction[];
   goals: Goal[];
+  categories: CategoryDef[];
 };
 
-const EMPTY: State = { transactions: [], goals: [] };
+const EMPTY: State = { transactions: [], goals: [], categories: [] };
 
 export function useFinanceStore() {
   const [state, setState] = useState<State>(EMPTY);
@@ -24,11 +27,12 @@ export function useFinanceStore() {
 
   const load = useCallback(async () => {
     try {
-      const [tx, goals] = await Promise.all([
+      const [tx, goals, categories] = await Promise.all([
         getTransactionsFn(),
         getGoalsFn(),
+        getCategoriesFn(),
       ]);
-      setState({ transactions: tx, goals });
+      setState({ transactions: tx, goals, categories });
     } catch {
       setState(EMPTY);
     } finally {
@@ -93,9 +97,22 @@ export function useFinanceStore() {
     }));
   }, []);
 
+  const addCategory = useCallback(
+    async (data: { value: string; label: string; type: "expense" | "income" | "both" }) => {
+      const created = await addCategoryFn({ data });
+      setState((prev) => ({
+        ...prev,
+        categories: [...prev.categories, created],
+      }));
+      return created;
+    },
+    [],
+  );
+
   return {
     transactions: state.transactions,
     goals: state.goals,
+    categories: state.categories,
     loaded,
     refetch: load,
     addTransaction,
@@ -104,5 +121,6 @@ export function useFinanceStore() {
     updateGoal,
     removeGoal,
     depositGoal,
+    addCategory,
   };
 }

@@ -5,7 +5,7 @@ import { Smartphone, CreditCard, Banknote } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ExpenseFab } from "@/components/expense-fab";
 import { useFinanceStore } from "@/lib/finance-store";
-import { CATEGORIES, type PaymentMethod } from "@/lib/finance-types";
+import { type PaymentMethod } from "@/lib/finance-types";
 import { formatCurrency, inMonth } from "@/lib/format";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -22,7 +22,7 @@ export const Route = createFileRoute("/stats")({
 const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 function Stats() {
-  const { transactions } = useFinanceStore();
+  const { transactions, categories } = useFinanceStore();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -41,8 +41,8 @@ function Stats() {
   const byCategory = useMemo(() => {
     const map = new Map<string, number>();
     monthTx.forEach((t) => map.set(t.category, (map.get(t.category) ?? 0) + t.amount));
-    return CATEGORIES.map((c) => ({ name: c.label, value: map.get(c.value) ?? 0, color: c.token, key: c.value }));
-  }, [monthTx]);
+    return categories.map((c) => ({ name: c.label, value: map.get(c.value) ?? 0, color: c.token, key: c.value }));
+  }, [monthTx, categories]);
 
   const total = byCategory.reduce((s, c) => s + c.value, 0);
 
